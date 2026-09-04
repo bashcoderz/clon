@@ -1,0 +1,26 @@
+#!/bin/bash
+
+diskbackup(){
+	if [ ! -d "$disk" ]; then
+		echo -e "\nError: '$disk' is not a valid mounted disk/folder path."
+		return 1
+	fi
+
+	dest=$(choose_destination) || return 1
+
+	base=$(basename "$disk")
+	check_existing_local "$dest" "$base" || return 1
+
+	target="${dest}${base}_backup${TIMESTAMP}.tar.gz"
+	CURRENT_TARGET="$target"
+
+	run_with_progress "Compressing disk contents" "$target" \
+		tar -czf "$target" -C "$(dirname "$disk")" "$base"
+	if [ $? -eq 0 ]; then
+		echo -e "\nDisk contents backed up successfully to: $target"
+	else
+		echo -e "\nError: disk backup failed."
+		rm -f "$target"
+	fi
+	CURRENT_TARGET=""
+}

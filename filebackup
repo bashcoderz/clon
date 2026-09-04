@@ -1,0 +1,25 @@
+#!/bin/bash
+
+filebackup(){
+	if [ ! -f "$filename" ]; then
+		echo -e "\nError: file '$filename' does not exist."
+		return 1
+	fi
+
+	dest=$(choose_destination) || return 1
+
+	base=$(basename "$filename")
+	check_existing_local "$dest" "$base" || return 1
+
+	target="${dest}${base}_backup${TIMESTAMP}"
+	CURRENT_TARGET="$target"
+
+	run_with_progress "Copying file" "$target" cp "$filename" "$target"
+	if [ $? -eq 0 ]; then
+		echo -e "\nFile backed up successfully to: $target"
+	else
+		echo -e "\nError: file backup failed."
+		rm -f "$target"
+	fi
+	CURRENT_TARGET=""
+}

@@ -1,0 +1,199 @@
+#!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+DEFAULT_DIR="/var/www/html/clone/"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+CURRENT_TARGET=""
+
+load_function(){
+	local func="$1"
+
+	# Already sourced earlier this session? Nothing to do.
+	if declare -f "$func" > /dev/null; then
+		return 0
+	fi
+
+	local path="$SCRIPT_DIR/$func"
+
+	if [ -f "$path" ]; then
+		echo -e "\nFound $func. Sourcing..."
+		source "$path"
+	else
+		echo -e "\nError: '$func' could not be found in $SCRIPT_DIR" >&2
+		return 1
+	fi
+}
+
+cleanup_on_cancel() {
+	echo -e "\n\nBackup cancelled by user."
+	if [ -n "$CURRENT_TARGET" ] && [ -e "$CURRENT_TARGET" ]; then
+		rm -rf "$CURRENT_TARGET"
+		echo -e "\nRemoved incomplete backup: $CURRENT_TARGET \n"
+	fi
+	exit 1
+}
+trap cleanup_on_cancel SIGINT
+
+ensure_dir() {
+	local dir="$1"
+
+	if [ -d "$dir" ]; then
+		return 0
+	fi
+
+	mkdir -p "$dir" 2>/dev/null
+	if [ -d "$dir" ]; then
+		return 0
+	fi
+
+	echo -e "\nPermission denied creating '$dir'. Retrying with sudo (you may be asked for your password)..." >&2
+	sudo mkdir -p "$dir" 2>/dev/null
+	if [ -d "$dir" ]; then
+		sudo chown "$(id -un)":"$(id -gn)" "$dir" 2>/dev/null
+		return 0
+	fi
+
+	echo -e "\nError: could not create '$dir', even with sudo. Choose a different path or fix permissions." >&2
+	return 1
+}
+
+choose_destination() {
+	echo -e -n "\nEnter backup folder path or press 'd' for default: " >&2
+	read dest
+
+	if [ "$dest" = "d" ] || [ -z "$dest" ]; then
+		dest="$DEFAULT_DIR"
+	fi
+
+	if [ ! -d "$dest" ]; then
+		echo -e "\nFolder '$dest' does not exist. Creating it..." >&2
+		ensure_dir "$dest" || return 1
+		echo -e "\nFolder created.\n" >&2
+	fi
+
+	echo "${dest%/}/"
+}
+
+
+run_with_progress() {
+	local label="$1"
+	local target="$2"
+	shift 2
+
+	"$@" &
+	local job_pid=$!
+
+	while kill -0 "$job_pid" 2>/dev/null; do
+		if [ -e "$target" ]; then
+			size=$(du -sh "$target" 2>/dev/null | cut -f1)
+			echo -ne "\r$label... current size: ${size:-0B}   "
+		else
+			echo -ne "\r$label... starting   "
+		fi
+		sleep 1
+	done
+
+	wait "$job_pid"
+	local status=$?
+	echo -e "\r$label... done.                          "
+	return $status
+}
+
+check_existing_local() {
+	local dir="$1"
+	local base="$2"
+
+	matches=$(find "$dir" -maxdepth 1 -name "${base}_backup*" 2>/dev/null)
+	if [ -n "$matches" ]; then
+		echo -e "\nA previous backup of '$base' already exists in '$dir':"
+		echo "$matches" | sed 's/^/  - /'
+		echo -e -n "\nContinue and create another one anyway? (y/n): "
+		read confirm
+		if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+			echo "Backup cancelled."
+			return 1
+		fi
+	fi
+	return 0
+}
+
+
+check_existing_remote() {
+	local srv="$1"
+	local dir="$2"
+	local base="$3"
+
+	matches=$(ssh "root@$srv" "find '$dir' -maxdepth 1 -name '${base}_backup*' 2>/dev/null")
+	if [ -n "$matches" ]; then
+		echo -e "\nA previous backup of '$base' already exists on $srv in '$dir':"
+		echo "$matches" | sed 's/^/  - /'
+		echo -e -n "\nContinue and create another one anyway? (y/n): "
+		read confirm
+		if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+			echo "Backup cancelled."
+			return 1
+		fi
+	fi
+	return 0
+}
+
+ask_continue() {
+	echo -e -n "\nWould you like to perform another backup? (y/n): "
+	read again
+	if [ "$again" = "y" ] || [ "$again" = "Y" ]; then
+		return 0
+	else
+		echo "Goodbye!"
+		exit 0
+	fi
+}
+
+
+master(){
+	while true; do
+		echo -e -n "\nEnter 'f' to back up a file, 'd' for a folder,\n'h' for a hard-drive, 's' for server, or 'q' to quit: "
+		read option
+
+		case "$option" in
+			f)
+				load_function "filebackup" || continue
+				echo -e -n "\nEnter a file name to back up: "
+				read filename
+				filebackup
+				;;
+			d)
+				load_function "folderbackup" || continue
+				echo -e -n "\nEnter a folder name to back up: "
+				read foldername
+				folderbackup
+				;;
+			h)
+				load_function "diskbackup" || continue
+				echo -e -n "\nEnter a hard-drive/mount path to back up: "
+				read disk
+				diskbackup
+				;;
+			s)
+				load_function "serverbackup" || continue
+				echo -e -n "\nEnter the server IP: "
+				read server
+				serverbackup
+				;;
+			q)
+				echo -e "\nGoodbye!"
+				exit 0
+				;;
+			*)
+				echo -e "\nInvalid option :(   Please try again!\n"
+				continue
+				;;
+		esac
+
+		ask_continue
+	done
+}
+
+
+master

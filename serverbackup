@@ -1,0 +1,76 @@
+#!/bin/bash
+
+serverbackup(){
+	echo -e -n "\nBack up a file (f) or a folder (d)? "
+	read type
+
+	echo -e -n "\nEnter remote destination folder or press 'd' for default: "
+	read dest
+	if [ "$dest" = "d" ] || [ -z "$dest" ]; then
+		dest="$DEFAULT_DIR"
+	fi
+	dest="${dest%/}/"
+
+	ssh "root@$server" "[ -d '$dest' ]"
+	if [ $? -ne 0 ]; then
+		echo -e "\nFolder '$dest' does not exist on $server. Creating it..."
+		ssh "root@$server" "mkdir -p '$dest' 2>/dev/null || sudo mkdir -p '$dest'"
+		ssh "root@$server" "[ -d '$dest' ]"
+		if [ $? -ne 0 ]; then
+			echo -e  "\nError: could not connect to server or create remote folder '$dest' (even with sudo)."
+			return 1
+		fi
+		echo -e "\nRemote folder created."
+	fi
+
+	if [ "$type" = "f" ]; then
+		echo -e -n "\nEnter file name to back up: "
+		read filename
+		if [ ! -f "$filename" ]; then
+			echo -e "\nError: file '$filename' does not exist."
+			return 1
+		fi
+		base=$(basename "$filename")
+		check_existing_remote "$server" "$dest" "$base" || return 1
+
+		target="${dest}${base}_backup${TIMESTAMP}"
+
+		scp "$filename" "root@$server:$target"
+		if [ $? -eq 0 ]; then
+			echo -e "\nFile backed up successfully to $server:$target"
+		else
+			echo -e "\nError: server file backup failed."
+			ssh "root@$server" "rm -f '$target'"
+		fi
+
+	elif [ "$type" = "d" ]; then
+		echo -e -n "\nEnter folder name to back up: "
+		read foldername
+		if [ ! -d "$foldername" ]; then
+			echo -e "\nError: folder '$foldername' does not exist."
+			return 1
+		fi
+		base=$(basename "$foldername")
+		check_existing_remote "$server" "$dest" "$base" || return 1
+
+		archive="/tmp/${base}_backup${TIMESTAMP}.tar.gz"
+		target="${dest}${base}_backup${TIMESTAMP}.tar.gz"
+		CURRENT_TARGET="$archive"
+
+		run_with_progress "Compressing folder" "$archive" \
+			tar -czf "$archive" -C "$(dirname "$foldername")" "$base" \
+			&& scp "$archive" "root@$server:$target"
+
+		if [ $? -eq 0 ]; then
+			echo -e "\nFolder backed up successfully to $server:$target"
+		else
+			echo -e "\nError: server folder backup failed."
+			ssh "root@$server" "rm -f '$target'"
+		fi
+		rm -f "$archive"
+		CURRENT_TARGET=""
+	else
+		echo -e "\nInvalid backup type."
+		return 1
+	fi
+}

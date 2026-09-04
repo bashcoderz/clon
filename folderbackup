@@ -1,0 +1,26 @@
+#!/bin/bash
+
+folderbackup(){
+	if [ ! -d "$foldername" ]; then
+		echo -e "\nError: folder '$foldername' does not exist."
+		return 1
+	fi
+
+	dest=$(choose_destination) || return 1
+
+	base=$(basename "$foldername")
+	check_existing_local "$dest" "$base" || return 1
+
+	target="${dest}${base}_backup${TIMESTAMP}.tar.gz"
+	CURRENT_TARGET="$target"
+
+	run_with_progress "Compressing folder" "$target" \
+		tar -czf "$target" -C "$(dirname "$foldername")" "$base"
+	if [ $? -eq 0 ]; then
+		echo -e "\nFolder backed up successfully to: $target"
+	else
+		echo -e "\nError: folder backup failed."
+		rm -f "$target"
+	fi
+	CURRENT_TARGET=""
+}

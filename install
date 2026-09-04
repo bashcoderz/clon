@@ -1,0 +1,50 @@
+#!/bin/bash
+
+set -e
+
+SOURCE_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+REQUIRED_FILES=("clonny" "filebackup" "folderbackup" "diskbackup" "serverbackup")
+
+echo "Checking project files in $SOURCE_DIR ..."
+for f in "${REQUIRED_FILES[@]}"; do
+	if [ ! -f "$SOURCE_DIR/$f" ]; then
+		echo "Error: '$f' is missing from $SOURCE_DIR. Re-download the project and try again." >&2
+		exit 1
+	fi
+done
+
+if [ "$(id -u)" -eq 0 ]; then
+	INSTALL_DIR="/opt/clon"
+	BIN_DIR="/usr/local/bin"
+	echo "Installing system-wide to $INSTALL_DIR ..."
+else
+	INSTALL_DIR="$HOME/.local/share/clon"
+	BIN_DIR="$HOME/.local/bin"
+	echo "Installing for the current user to $INSTALL_DIR ..."
+fi
+
+mkdir -p "$INSTALL_DIR"
+mkdir -p "$BIN_DIR"
+
+for f in "${REQUIRED_FILES[@]}"; do
+	cp "$SOURCE_DIR/$f" "$INSTALL_DIR/$f"
+done
+chmod +x "$INSTALL_DIR/clonny"
+
+ln -sf "$INSTALL_DIR/clonny" "$BIN_DIR/clonny"
+echo "Linked $BIN_DIR/clonny -> $INSTALL_DIR/clonny"
+
+case ":$PATH:" in
+	*":$BIN_DIR:"*)
+		echo -e "\nInstall complete! Open a new terminal (or 'hash -r') and just type: clonny"
+		;;
+	*)
+		echo -e "\nInstall complete, but $BIN_DIR is not in your PATH yet."
+		if [ "$(id -u)" -eq 0 ]; then
+			echo "This is unusual for /usr/local/bin — check your system's PATH configuration."
+		else
+			echo "Add this line to ~/.bashrc (or ~/.zshrc), then restart your terminal:"
+			echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+		fi
+		;;
+esac
