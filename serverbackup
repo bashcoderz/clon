@@ -8,23 +8,45 @@ serverbackup(){
 	fi
 	remote="${remote_user}@${server}"
 
+	echo -e -n "\nIs the remote server Linux or Windows? Enter 'l' or 'w' (default: l): "
+	read remote_os_input
+	if [ "$remote_os_input" = "w" ] || [ "$remote_os_input" = "W" ]; then
+		remote_os="windows"
+	else
+		remote_os="linux"
+	fi
+	CURRENT_REMOTE_OS="$remote_os"
+
+	if [ "$remote_os" = "windows" ]; then
+		default_remote_dir="C:/clone/"
+
+		if scp -O 2>&1 | grep -qi "unknown option"; then
+			scp_opts=""
+		else
+			scp_opts="-O"
+		fi
+	else
+		default_remote_dir="$DEFAULT_DIR"
+		scp_opts=""
+	fi
+
 	echo -e -n "\nBack up a file (f) or a folder (d)? "
 	read type
 
-	echo -e -n "\nEnter remote destination folder or press 'd' for default: "
+	echo -e -n "\nEnter remote destination folder or press 'd' for default ($default_remote_dir): "
 	read dest
 	if [ "$dest" = "d" ] || [ -z "$dest" ]; then
-		dest="$DEFAULT_DIR"
+		dest="$default_remote_dir"
 	fi
 	dest="${dest%/}/"
 
-	ssh "$remote" "[ -d '$dest' ]"
+	remote_dir_exists "$remote" "$dest" "$remote_os"
 	if [ $? -ne 0 ]; then
 		echo -e "\nFolder '$dest' does not exist on $server. Creating it..."
-		ssh "$remote" "mkdir -p '$dest' 2>/dev/null || sudo mkdir -p '$dest'"
-		ssh "$remote" "[ -d '$dest' ]"
+		remote_mkdir "$remote" "$dest" "$remote_os"
+		remote_dir_exists "$remote" "$dest" "$remote_os"
 		if [ $? -ne 0 ]; then
-			echo -e  "\nError: could not connect to server or create remote folder '$dest' (even with sudo)."
+			echo -e  "\nError: could not connect to server or create remote folder '$dest'."
 			return 1
 		fi
 		echo -e "\nRemote folder created."
@@ -38,7 +60,7 @@ serverbackup(){
 			return 1
 		fi
 		base=$(basename "$filename")
-		check_existing_remote "$remote" "$dest" "$base" || return 1
+		check_existing_remote "$remote" "$dest" "$base" "$remote_os" || return 1
 
 		remote_target="${dest}${base}_backup${TIMESTAMP}"
 		remote_temp="${remote_target}.partial"
@@ -47,25 +69,26 @@ serverbackup(){
 		CURRENT_REMOTE_HOST="$server"
 		CURRENT_REMOTE_PATH="$remote_temp"
 
-		scp "$filename" "$remote:$remote_temp"
+		scp $scp_opts "$filename" "$remote:$remote_temp"
 		scp_status=$?
 
 		if [ $scp_status -eq 0 ]; then
-			ssh "$remote" "mv '$remote_temp' '$remote_target'"
+			remote_rename "$remote" "$remote_temp" "$remote_target" "$remote_os"
 			if [ $? -eq 0 ]; then
 				echo -e "\nFile backed up successfully to $server:$remote_target"
 			else
 				echo -e "\nError: transfer succeeded but could not finalize the remote file."
-				ssh "$remote" "rm -f '$remote_temp'"
+				remote_remove "$remote" "$remote_temp" "$remote_os"
 			fi
 		else
 			echo -e "\nError: server file backup failed."
-			ssh "$remote" "rm -f '$remote_temp'"
+			remote_remove "$remote" "$remote_temp" "$remote_os"
 		fi
 
 		CURRENT_REMOTE_USER=""
 		CURRENT_REMOTE_HOST=""
 		CURRENT_REMOTE_PATH=""
+		CURRENT_REMOTE_OS=""
 
 	elif [ "$type" = "d" ]; then
 		echo -e -n "\nEnter folder name to back up: "
@@ -75,7 +98,7 @@ serverbackup(){
 			return 1
 		fi
 		base=$(basename "$foldername")
-		check_existing_remote "$remote" "$dest" "$base" || return 1
+		check_existing_remote "$remote" "$dest" "$base" "$remote_os" || return 1
 
 		archive="/tmp/${base}_backup${TIMESTAMP}.tar.gz"
 		remote_target="${dest}${base}_backup${TIMESTAMP}.tar.gz"
@@ -93,21 +116,21 @@ serverbackup(){
 			CURRENT_REMOTE_HOST="$server"
 			CURRENT_REMOTE_PATH="$remote_temp"
 
-			scp "$archive" "$remote:$remote_temp"
+			scp $scp_opts "$archive" "$remote:$remote_temp"
 			scp_status=$?
 		fi
 
 		if [ $tar_status -eq 0 ] && [ $scp_status -eq 0 ]; then
-			ssh "$remote" "mv '$remote_temp' '$remote_target'"
+			remote_rename "$remote" "$remote_temp" "$remote_target" "$remote_os"
 			if [ $? -eq 0 ]; then
 				echo -e "\nFolder backed up successfully to $server:$remote_target"
 			else
 				echo -e "\nError: transfer succeeded but could not finalize the remote folder."
-				ssh "$remote" "rm -f '$remote_temp'"
+				remote_remove "$remote" "$remote_temp" "$remote_os"
 			fi
 		else
 			echo -e "\nError: server folder backup failed."
-			ssh "$remote" "rm -f '$remote_temp'" 2>/dev/null
+			remote_remove "$remote" "$remote_temp" "$remote_os"
 		fi
 
 		rm -f "$archive"
@@ -115,6 +138,7 @@ serverbackup(){
 		CURRENT_REMOTE_USER=""
 		CURRENT_REMOTE_HOST=""
 		CURRENT_REMOTE_PATH=""
+		CURRENT_REMOTE_OS=""
 	else
 		echo -e "\nInvalid backup type."
 		return 1

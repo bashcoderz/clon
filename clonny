@@ -15,7 +15,6 @@ print_banner() {
 EOF
 }
 
-
 print_banner
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
@@ -27,11 +26,11 @@ CURRENT_TARGET=""
 CURRENT_REMOTE_USER=""
 CURRENT_REMOTE_HOST=""
 CURRENT_REMOTE_PATH=""
+CURRENT_REMOTE_OS=""
 
 load_function(){
 	local func="$1"
 
-	# Already sourced earlier this session? Nothing to do.
 	if declare -f "$func" > /dev/null; then
 		return 0
 	fi
@@ -54,7 +53,12 @@ cleanup_on_cancel() {
 		echo -e "\nRemoved incomplete local backup: $CURRENT_TARGET \n"
 	fi
 	if [ -n "$CURRENT_REMOTE_PATH" ] && [ -n "$CURRENT_REMOTE_HOST" ]; then
-		ssh "${CURRENT_REMOTE_USER:-root}@$CURRENT_REMOTE_HOST" "rm -f '$CURRENT_REMOTE_PATH'" 2>/dev/null
+		remote="${CURRENT_REMOTE_USER:-root}@$CURRENT_REMOTE_HOST"
+		if [ "$CURRENT_REMOTE_OS" = "windows" ]; then
+			ssh "$remote" "powershell -NoProfile -Command \"Remove-Item -LiteralPath '$CURRENT_REMOTE_PATH' -Force -ErrorAction SilentlyContinue\"" 2>/dev/null
+		else
+			ssh "$remote" "rm -f '$CURRENT_REMOTE_PATH'" 2>/dev/null
+		fi
 		echo -e "\nRemoved incomplete remote backup: $CURRENT_REMOTE_HOST:$CURRENT_REMOTE_PATH \n"
 	fi
 	exit 1
@@ -144,13 +148,54 @@ check_existing_local() {
 	return 0
 }
 
+remote_dir_exists() {
+	local remote="$1" path="$2" os="$3"
+	if [ "$os" = "windows" ]; then
+		ssh "$remote" "powershell -NoProfile -Command \"if (Test-Path -LiteralPath '$path') { exit 0 } else { exit 1 }\""
+	else
+		ssh "$remote" "[ -d '$path' ]"
+	fi
+}
+
+remote_mkdir() {
+	local remote="$1" path="$2" os="$3"
+	if [ "$os" = "windows" ]; then
+		ssh "$remote" "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force -Path '$path' | Out-Null\""
+	else
+		ssh "$remote" "mkdir -p '$path' 2>/dev/null || sudo mkdir -p '$path'"
+	fi
+}
+
+remote_rename() {
+	local remote="$1" from="$2" to="$3" os="$4"
+	if [ "$os" = "windows" ]; then
+		ssh "$remote" "powershell -NoProfile -Command \"Move-Item -LiteralPath '$from' -Destination '$to' -Force\""
+	else
+		ssh "$remote" "mv '$from' '$to'"
+	fi
+}
+
+remote_remove() {
+	local remote="$1" path="$2" os="$3"
+	if [ "$os" = "windows" ]; then
+		ssh "$remote" "powershell -NoProfile -Command \"Remove-Item -LiteralPath '$path' -Force -ErrorAction SilentlyContinue\"" 2>/dev/null
+	else
+		ssh "$remote" "rm -f '$path'" 2>/dev/null
+	fi
+}
 
 check_existing_remote() {
-	local remote="$1"   # expected as user@host, e.g. root@192.168.1.10
+	local remote="$1" 
 	local dir="$2"
 	local base="$3"
+	local os="${4:-linux}"
 
-	matches=$(ssh "$remote" "find '$dir' -maxdepth 1 -name '${base}_backup*' 2>/dev/null")
+	if [ "$os" = "windows" ]; then
+		matches=$(ssh "$remote" "powershell -NoProfile -Command \"Get-ChildItem -LiteralPath '$dir' -Filter '${base}_backup*' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName\"")
+	else
+		matches=$(ssh "$remote" "find '$dir' -maxdepth 1 -name '${base}_backup*' 2>/dev/null")
+	fi
+
 	if [ -n "$matches" ]; then
 		echo -e "\nA previous backup of '$base' already exists on $remote in '$dir':"
 		echo "$matches" | sed 's/^/  - /'
