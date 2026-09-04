@@ -23,10 +23,9 @@ clon/
 ├── folderbackup      # back up a folder (compressed)
 ├── diskbackup        # back up a disk/mount path (compressed)
 ├── serverbackup       # back up a file or folder to a remote server
-└── install.sh         # installer
+└── install         	# installer
 ```
 
-`clonny` only loads the specific function it needs (`filebackup`, `folderbackup`, `diskbackup`, or `serverbackup`) at the moment you select it from the menu — not all four up front.
 
 ## Installation
 
@@ -51,7 +50,7 @@ cd clon
 **Just for yourself** (no admin rights needed):
 
 ```bash
-./install.sh
+./install
 ```
 
 Installs to `~/.local/share/clon` and symlinks `clonny` into `~/.local/bin`.
@@ -59,7 +58,7 @@ Installs to `~/.local/share/clon` and symlinks `clonny` into `~/.local/bin`.
 **For every user on the machine:**
 
 ```bash
-sudo ./install.sh
+sudo ./install
 ```
 
 Installs to `/opt/clon` and symlinks `clonny` into `/usr/local/bin`.
@@ -73,8 +72,6 @@ Open a new terminal window (so your shell picks up the updated `PATH`), then jus
 ```bash
 clonny
 ```
-
-from any directory — no `bash clonny`, no `./`, no need to remember where the project folder lives.
 
 ## Usage
 
