@@ -198,7 +198,7 @@ list_mounts() {
 
 master(){
 	while true; do
-		echo -e -n "\nEnter 'f' to back up a file, 'd' for a folder,\n'h' for a hard-drive, 's' for server, or 'q' to quit: "
+		echo -e -n "\nEnter:\n'f' to back up a file, \n'd' for a folder,\n'h' for a hard-drive, \n's' for server, \n'q' to quit \nEnter your choice: "
 		read option
 
 		case "$option" in
