@@ -19,7 +19,7 @@ serverbackup(){
 
 	if [ "$remote_os" = "windows" ]; then
 		default_remote_dir="C:/clone/"
-
+		
 		if scp -O 2>&1 | grep -qi "unknown option"; then
 			scp_opts=""
 		else
@@ -29,6 +29,29 @@ serverbackup(){
 		default_remote_dir="$DEFAULT_DIR"
 		scp_opts=""
 	fi
+
+	echo -e -n "\nChecking connection to $remote ..."
+	sleep 1
+	ssh -o BatchMode=yes -o ConnectTimeout=5 "$remote" "exit" 2>/tmp/clon_ssh_check.$$
+	ssh_check_status=$?
+	if [ $ssh_check_status -ne 0 ]; then
+		echo -e "\rCould not connect to $remote.                       \n"
+		cat /tmp/clon_ssh_check.$$ >&2
+		rm -f /tmp/clon_ssh_check.$$
+		echo -e "\nCheck the following on $server:"
+		echo "  - The IP/hostname is correct and the machine is powered on and reachable"
+		if [ "$remote_os" = "windows" ]; then
+			echo "  - OpenSSH Server is installed AND running (Settings > Apps > Optional Features,"
+			echo "    or: Get-Service sshd  /  Start-Service sshd)"
+			echo "  - Windows Firewall allows inbound connections on port 22"
+		else
+			echo "  - An SSH server (sshd) is installed and running (port 22)"
+		fi
+		echo "  - Key-based login for user '$remote_user' is set up (this tool doesn't prompt for a password)"
+		return 1
+	fi
+	rm -f /tmp/clon_ssh_check.$$
+	echo -e "\rConnected to $remote.                                  "
 
 	echo -e -n "\nBack up a file (f) or a folder (d)? "
 	read type
@@ -111,7 +134,6 @@ serverbackup(){
 
 		scp_status=1
 		if [ $tar_status -eq 0 ]; then
-
 			CURRENT_REMOTE_USER="$remote_user"
 			CURRENT_REMOTE_HOST="$server"
 			CURRENT_REMOTE_PATH="$remote_temp"
