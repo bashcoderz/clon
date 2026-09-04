@@ -1,6 +1,13 @@
 #!/bin/bash
 
 serverbackup(){
+	echo -e -n "\nEnter remote SSH username or press 'd' for default (root): "
+	read remote_user
+	if [ "$remote_user" = "d" ] || [ -z "$remote_user" ]; then
+		remote_user="root"
+	fi
+	remote="${remote_user}@${server}"
+
 	echo -e -n "\nBack up a file (f) or a folder (d)? "
 	read type
 
@@ -11,11 +18,11 @@ serverbackup(){
 	fi
 	dest="${dest%/}/"
 
-	ssh "root@$server" "[ -d '$dest' ]"
+	ssh "$remote" "[ -d '$dest' ]"
 	if [ $? -ne 0 ]; then
 		echo -e "\nFolder '$dest' does not exist on $server. Creating it..."
-		ssh "root@$server" "mkdir -p '$dest' 2>/dev/null || sudo mkdir -p '$dest'"
-		ssh "root@$server" "[ -d '$dest' ]"
+		ssh "$remote" "mkdir -p '$dest' 2>/dev/null || sudo mkdir -p '$dest'"
+		ssh "$remote" "[ -d '$dest' ]"
 		if [ $? -ne 0 ]; then
 			echo -e  "\nError: could not connect to server or create remote folder '$dest' (even with sudo)."
 			return 1
@@ -31,17 +38,34 @@ serverbackup(){
 			return 1
 		fi
 		base=$(basename "$filename")
-		check_existing_remote "$server" "$dest" "$base" || return 1
+		check_existing_remote "$remote" "$dest" "$base" || return 1
 
-		target="${dest}${base}_backup${TIMESTAMP}"
+		remote_target="${dest}${base}_backup${TIMESTAMP}"
+		remote_temp="${remote_target}.partial"
 
-		scp "$filename" "root@$server:$target"
-		if [ $? -eq 0 ]; then
-			echo -e "\nFile backed up successfully to $server:$target"
+		CURRENT_REMOTE_USER="$remote_user"
+		CURRENT_REMOTE_HOST="$server"
+		CURRENT_REMOTE_PATH="$remote_temp"
+
+		scp "$filename" "$remote:$remote_temp"
+		scp_status=$?
+
+		if [ $scp_status -eq 0 ]; then
+			ssh "$remote" "mv '$remote_temp' '$remote_target'"
+			if [ $? -eq 0 ]; then
+				echo -e "\nFile backed up successfully to $server:$remote_target"
+			else
+				echo -e "\nError: transfer succeeded but could not finalize the remote file."
+				ssh "$remote" "rm -f '$remote_temp'"
+			fi
 		else
 			echo -e "\nError: server file backup failed."
-			ssh "root@$server" "rm -f '$target'"
+			ssh "$remote" "rm -f '$remote_temp'"
 		fi
+
+		CURRENT_REMOTE_USER=""
+		CURRENT_REMOTE_HOST=""
+		CURRENT_REMOTE_PATH=""
 
 	elif [ "$type" = "d" ]; then
 		echo -e -n "\nEnter folder name to back up: "
@@ -51,24 +75,46 @@ serverbackup(){
 			return 1
 		fi
 		base=$(basename "$foldername")
-		check_existing_remote "$server" "$dest" "$base" || return 1
+		check_existing_remote "$remote" "$dest" "$base" || return 1
 
 		archive="/tmp/${base}_backup${TIMESTAMP}.tar.gz"
-		target="${dest}${base}_backup${TIMESTAMP}.tar.gz"
+		remote_target="${dest}${base}_backup${TIMESTAMP}.tar.gz"
+		remote_temp="${remote_target}.partial"
 		CURRENT_TARGET="$archive"
 
 		run_with_progress "Compressing folder" "$archive" \
-			tar -czf "$archive" -C "$(dirname "$foldername")" "$base" \
-			&& scp "$archive" "root@$server:$target"
+			tar -czf "$archive" -C "$(dirname "$foldername")" "$base"
+		tar_status=$?
 
-		if [ $? -eq 0 ]; then
-			echo -e "\nFolder backed up successfully to $server:$target"
+		scp_status=1
+		if [ $tar_status -eq 0 ]; then
+
+			CURRENT_REMOTE_USER="$remote_user"
+			CURRENT_REMOTE_HOST="$server"
+			CURRENT_REMOTE_PATH="$remote_temp"
+
+			scp "$archive" "$remote:$remote_temp"
+			scp_status=$?
+		fi
+
+		if [ $tar_status -eq 0 ] && [ $scp_status -eq 0 ]; then
+			ssh "$remote" "mv '$remote_temp' '$remote_target'"
+			if [ $? -eq 0 ]; then
+				echo -e "\nFolder backed up successfully to $server:$remote_target"
+			else
+				echo -e "\nError: transfer succeeded but could not finalize the remote folder."
+				ssh "$remote" "rm -f '$remote_temp'"
+			fi
 		else
 			echo -e "\nError: server folder backup failed."
-			ssh "root@$server" "rm -f '$target'"
+			ssh "$remote" "rm -f '$remote_temp'" 2>/dev/null
 		fi
+
 		rm -f "$archive"
 		CURRENT_TARGET=""
+		CURRENT_REMOTE_USER=""
+		CURRENT_REMOTE_HOST=""
+		CURRENT_REMOTE_PATH=""
 	else
 		echo -e "\nInvalid backup type."
 		return 1

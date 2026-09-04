@@ -6,11 +6,13 @@ DEFAULT_DIR="/var/www/html/clone/"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 CURRENT_TARGET=""
+CURRENT_REMOTE_USER=""
+CURRENT_REMOTE_HOST=""
+CURRENT_REMOTE_PATH=""
 
 load_function(){
 	local func="$1"
 
-	# Already sourced earlier this session? Nothing to do.
 	if declare -f "$func" > /dev/null; then
 		return 0
 	fi
@@ -30,7 +32,11 @@ cleanup_on_cancel() {
 	echo -e "\n\nBackup cancelled by user."
 	if [ -n "$CURRENT_TARGET" ] && [ -e "$CURRENT_TARGET" ]; then
 		rm -rf "$CURRENT_TARGET"
-		echo -e "\nRemoved incomplete backup: $CURRENT_TARGET \n"
+		echo -e "\nRemoved incomplete local backup: $CURRENT_TARGET \n"
+	fi
+	if [ -n "$CURRENT_REMOTE_PATH" ] && [ -n "$CURRENT_REMOTE_HOST" ]; then
+		ssh "${CURRENT_REMOTE_USER:-root}@$CURRENT_REMOTE_HOST" "rm -f '$CURRENT_REMOTE_PATH'" 2>/dev/null
+		echo -e "\nRemoved incomplete remote backup: $CURRENT_REMOTE_HOST:$CURRENT_REMOTE_PATH \n"
 	fi
 	exit 1
 }
@@ -121,13 +127,13 @@ check_existing_local() {
 
 
 check_existing_remote() {
-	local srv="$1"
+	local remote="$1"   # expected as user@host, e.g. root@192.168.1.10
 	local dir="$2"
 	local base="$3"
 
-	matches=$(ssh "root@$srv" "find '$dir' -maxdepth 1 -name '${base}_backup*' 2>/dev/null")
+	matches=$(ssh "$remote" "find '$dir' -maxdepth 1 -name '${base}_backup*' 2>/dev/null")
 	if [ -n "$matches" ]; then
-		echo -e "\nA previous backup of '$base' already exists on $srv in '$dir':"
+		echo -e "\nA previous backup of '$base' already exists on $remote in '$dir':"
 		echo "$matches" | sed 's/^/  - /'
 		echo -e -n "\nContinue and create another one anyway? (y/n): "
 		read confirm
@@ -149,7 +155,6 @@ ask_continue() {
 		exit 0
 	fi
 }
-
 
 list_mounts() {
 	echo -e "\nAvailable disks / mount points:\n"
