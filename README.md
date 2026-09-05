@@ -58,6 +58,7 @@ Installs to `~/.local/share/clon` and symlinks `clonny` into `~/.local/bin`.
 **For every user on the machine:**
 
 ```bash
+sudo chmod +x clonny install 
 sudo ./install
 ```
 
