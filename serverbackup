@@ -19,7 +19,7 @@ serverbackup(){
 
 	if [ "$remote_os" = "windows" ]; then
 		default_remote_dir="C:/clone/"
-		
+
 		if scp -O 2>&1 | grep -qi "unknown option"; then
 			scp_opts=""
 		else
@@ -30,14 +30,11 @@ serverbackup(){
 		scp_opts=""
 	fi
 
-	echo -e -n "\nChecking connection to $remote ..."
-	sleep 1
-	ssh -o BatchMode=yes -o ConnectTimeout=5 "$remote" "exit" 2>/tmp/clon_ssh_check.$$
+	echo -e -n "\nChecking connection to $remote ...\n"
+	ssh -o ConnectTimeout=10 "$remote" "exit"
 	ssh_check_status=$?
 	if [ $ssh_check_status -ne 0 ]; then
-		echo -e "\rCould not connect to $remote.                       \n"
-		cat /tmp/clon_ssh_check.$$ >&2
-		rm -f /tmp/clon_ssh_check.$$
+		echo -e "\nCould not connect to $remote."
 		echo -e "\nCheck the following on $server:"
 		echo "  - The IP/hostname is correct and the machine is powered on and reachable"
 		if [ "$remote_os" = "windows" ]; then
@@ -50,7 +47,6 @@ serverbackup(){
 		echo "  - Key-based login for user '$remote_user' is set up (this tool doesn't prompt for a password)"
 		return 1
 	fi
-	rm -f /tmp/clon_ssh_check.$$
 	echo -e "\rConnected to $remote.                                  "
 
 	echo -e -n "\nBack up a file (f) or a folder (d)? "
