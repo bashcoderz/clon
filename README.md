@@ -23,9 +23,12 @@ clon/
 ├── folderbackup      # back up a folder (compressed)
 ├── diskbackup        # back up a disk/mount path (compressed)
 ├── serverbackup       # back up a file or folder to a remote server
-└── install         	# installer
+├── install              # installer
+├── uninstall             # uninstaller
+└── LICENSE                # GPL-3.0 license text
 ```
 
+`clonny` only loads the specific function it needs (`filebackup`, `folderbackup`, `diskbackup`, or `serverbackup`) at the moment you select it from the menu — not all four up front.
 
 ## Installation
 
@@ -50,6 +53,7 @@ cd clon
 **Just for yourself** (no admin rights needed):
 
 ```bash
+chmod +x clonny install uninstall
 ./install
 ```
 
@@ -58,7 +62,7 @@ Installs to `~/.local/share/clon` and symlinks `clonny` into `~/.local/bin`.
 **For every user on the machine:**
 
 ```bash
-sudo chmod +x clonny install 
+sudo chmod +x clonny install uninstall
 sudo ./install
 ```
 
@@ -73,6 +77,8 @@ Open a new terminal window (so your shell picks up the updated `PATH`), then jus
 ```bash
 clonny
 ```
+
+from any directory — no `bash clonny`, no `./`, no need to remember where the project folder lives.
 
 ## Usage
 
@@ -93,13 +99,36 @@ For any backup, you'll be asked for a destination folder, or you can press `d` t
 
 After each backup completes, `clonny` asks if you'd like to run another one or exit.
 
+## Uninstallation
+
+Run `uninstall` the same way you ran `install` — matching whichever mode you installed with:
+
+**If you installed just for yourself:**
+
+```bash
+./uninstall
+```
+
+Removes `~/.local/share/clon` and the `~/.local/bin/clonny` symlink.
+
+**If you installed system-wide:**
+
+```bash
+sudo ./uninstall
+```
+
+Removes `/opt/clon` and the `/usr/local/bin/clonny` symlink.
+
+If you run it in the wrong mode (e.g. plain `./uninstall` when you'd installed with `sudo`), it will simply report that nothing was found there instead of deleting anything — just re-run it with the matching mode.
+
+Uninstalling only removes the `clonny` tool itself — **any backups you've already created are left untouched**, since those live wherever you chose to store them (`/var/www/html/clone/` by default, or any custom path you specified at backup time).
+
 ## Requirements
 
 - Bash
 - `tar`, `du`, `find` (standard on virtually every Linux system)
 - `ssh` and `scp` (only needed for server backups)
 - `sudo` (only needed if the destination folder requires elevated permissions to create)
-
 
 ## License
 
