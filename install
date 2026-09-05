@@ -3,6 +3,7 @@
 set -e
 
 SOURCE_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
 REQUIRED_FILES=("clonny" "filebackup" "folderbackup" "diskbackup" "serverbackup")
 
 echo "Checking project files in $SOURCE_DIR ..."
@@ -13,11 +14,14 @@ for f in "${REQUIRED_FILES[@]}"; do
 	fi
 done
 
+chmod +x "$SOURCE_DIR/clonny" 2>/dev/null || true
+
 if [ "$(id -u)" -eq 0 ]; then
 	INSTALL_DIR="/opt/clon"
 	BIN_DIR="/usr/local/bin"
 	echo "Installing system-wide to $INSTALL_DIR ..."
 else
+
 	INSTALL_DIR="$HOME/.local/share/clon"
 	BIN_DIR="$HOME/.local/bin"
 	echo "Installing for the current user to $INSTALL_DIR ..."

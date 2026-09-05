@@ -1,0 +1,38 @@
+#!/bin/bash
+
+if [ "$(id -u)" -eq 0 ]; then
+	INSTALL_DIR="/opt/clon"
+	BIN_DIR="/usr/local/bin"
+	echo "Removing system-wide install ..."
+else
+	INSTALL_DIR="$HOME/.local/share/clon"
+	BIN_DIR="$HOME/.local/bin"
+	echo "Removing per-user install ..."
+fi
+
+removed_anything=false
+
+if [ -L "$BIN_DIR/clonny" ] || [ -e "$BIN_DIR/clonny" ]; then
+	rm -f "$BIN_DIR/clonny"
+	echo "Removed $BIN_DIR/clonny"
+	removed_anything=true
+fi
+
+if [ -d "$INSTALL_DIR" ]; then
+	rm -rf "$INSTALL_DIR"
+	echo "Removed $INSTALL_DIR"
+	removed_anything=true
+fi
+
+if [ "$removed_anything" = true ]; then
+	echo -e "\nclonny has been uninstalled."
+else
+	echo -e "\nNothing found at $BIN_DIR/clonny or $INSTALL_DIR."
+	if [ "$(id -u)" -eq 0 ]; then
+		echo "If you installed it without sudo, run this again without sudo instead."
+	else
+		echo "If you installed it with sudo, run this again with sudo instead."
+	fi
+fi
+
+echo -e "\nNote: any backups you created (in /var/www/html/clone/, C:/clone/, or wherever you chose) are untouched — this only removes the clonny tool itself, never your backup files."
